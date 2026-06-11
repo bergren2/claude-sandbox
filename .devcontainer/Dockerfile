@@ -27,10 +27,14 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 
 ARG USERNAME=node
 
-# Persist shell history across rebuilds (volume-mounted in devcontainer.json).
+# Pre-create the volume mount points owned by the non-root user. Docker
+# initializes a fresh named volume from the image path (contents + ownership),
+# so this gives node write access without a sudo chown at container-create time.
 RUN mkdir -p /commandhistory \
   && touch /commandhistory/.bash_history \
-  && chown -R $USERNAME:$USERNAME /commandhistory
+  && chown -R $USERNAME:$USERNAME /commandhistory \
+  && mkdir -p /home/$USERNAME/.claude \
+  && chown -R $USERNAME:$USERNAME /home/$USERNAME/.claude
 ENV HISTFILE=/commandhistory/.bash_history
 
 # Passwordless sudo ONLY for the firewall init script — nothing else.

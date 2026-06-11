@@ -31,6 +31,7 @@
     "GH_TOKEN": "${localEnv:GH_TOKEN}",
     "TZ": "${localEnv:TZ:America/New_York}"
   },
-  // Fix volume ownership for the non-root user, then lock down the network.
-  "postCreateCommand": "sudo chown -R node:node /home/node/.claude /commandhistory && sudo /usr/local/bin/init-firewall.sh"
+  // Lock down outbound network to the allowlist. Volume ownership is handled
+  // in the image (mount points are pre-created owned by node).
+  "postCreateCommand": "sudo /usr/local/bin/init-firewall.sh"
 }
