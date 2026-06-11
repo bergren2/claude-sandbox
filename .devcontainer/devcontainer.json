@@ -1,0 +1,36 @@
+{
+  "name": "claude-sandbox",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "TZ": "${localEnv:TZ:America/New_York}"
+    }
+  },
+  // NET_ADMIN/NET_RAW are required for the firewall init script (iptables/ipset).
+  "runArgs": [
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "eamodio.gitlens"
+      ]
+    }
+  },
+  "remoteUser": "node",
+  "mounts": [
+    // Persist Claude Code login + shell history across container rebuilds.
+    "source=claude-sandbox-config,target=/home/node/.claude,type=volume",
+    "source=claude-sandbox-history,target=/commandhistory,type=volume"
+  ],
+  "containerEnv": {
+    // Optional: set these on the host to skip interactive login / enable gh.
+    "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
+    "GH_TOKEN": "${localEnv:GH_TOKEN}",
+    "TZ": "${localEnv:TZ:America/New_York}"
+  },
+  // Fix volume ownership for the non-root user, then lock down the network.
+  "postCreateCommand": "sudo chown -R node:node /home/node/.claude /commandhistory && sudo /usr/local/bin/init-firewall.sh"
+}
