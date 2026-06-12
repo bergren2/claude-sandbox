@@ -14,7 +14,12 @@
 # does this for you.
 #
 # Env:
-#   REVIEW_OUTPUT   output file (default: review.md)
+#   REVIEW_OUTPUT        output file (default: review.md)
+#   REVIEW_PROMPT_FILE   path to a file holding the review prompt to run. The
+#                        review "policy" (what to look for, how to scope and
+#                        calibrate) lives OUTSIDE the sandbox — e.g. the pr-tools
+#                        review-local skill supplies it. If unset, a built-in
+#                        default prompt is used so the script still works alone.
 set -euo pipefail
 
 BASE_REF="${1:-origin/main}"
@@ -38,13 +43,19 @@ fi
 
 echo "Reviewing changes against ${BASE_REF}..."
 
-PROMPT="Review the changes on the current git branch compared to ${BASE_REF}. \
+# The review prompt (the "policy") is supplied by the caller when present;
+# otherwise fall back to a minimal built-in so the script still works standalone.
+if [ -n "${REVIEW_PROMPT_FILE:-}" ] && [ -r "${REVIEW_PROMPT_FILE}" ]; then
+  PROMPT="$(cat "${REVIEW_PROMPT_FILE}")"
+else
+  PROMPT="Review the changes on the current git branch compared to ${BASE_REF}. \
 Run 'git diff ${BASE_REF}...HEAD' to see them, and read related files in the \
 repo to judge correctness. Report findings for correctness bugs, security \
 issues, and clear simplification/reuse opportunities. For each finding give: \
 file:line, severity (blocker/high/medium/low/nit), what's wrong, and a concrete \
 fix. Group by severity, most severe first. Be concise. If the diff is clean, \
 say so plainly. Output GitHub-flavored markdown suitable for a PR comment."
+fi
 
 claude -p "$PROMPT" --dangerously-skip-permissions | tee "$OUTPUT"
 

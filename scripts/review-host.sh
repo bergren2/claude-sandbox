@@ -17,7 +17,12 @@
 # `review-local` skill is the usual caller and handles posting.
 #
 # Env:
-#   REVIEW_OUTPUT   output file (default: review.md); forwarded into the container
+#   REVIEW_OUTPUT        output file (default: review.md); forwarded into the container
+#   REVIEW_PROMPT_FILE   host path to a file holding the review prompt to run. Its
+#                        contents are staged into the mounted workspace so the
+#                        in-container review can read them (the review "policy" is
+#                        owned by the caller, not the sandbox). If unset, the
+#                        in-container default prompt is used.
 #
 # Host prereqs:
 #   - Docker running (Docker Desktop)
@@ -76,6 +81,21 @@ exec_env=()
 for var in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN; do
   [ -n "${!var:-}" ] && exec_env+=( --remote-env "$var=${!var}" )
 done
+
+# If the caller supplied a review prompt, stage it inside the mounted workspace
+# (the container can only read paths under the mount). It's a temp dotfile,
+# removed on exit; the container reads it via a workspace-relative path. This is
+# pure plumbing — the prompt's *content* is the caller's, not the sandbox's.
+if [ -n "${REVIEW_PROMPT_FILE:-}" ]; then
+  if [ ! -r "${REVIEW_PROMPT_FILE}" ]; then
+    echo "ERROR: REVIEW_PROMPT_FILE='${REVIEW_PROMPT_FILE}' is not readable." >&2
+    exit 1
+  fi
+  staged_prompt="$WORKSPACE/.claude-review-prompt.md"
+  cp "${REVIEW_PROMPT_FILE}" "$staged_prompt"
+  trap 'rm -f "$staged_prompt"' EXIT
+  exec_env+=( --remote-env "REVIEW_PROMPT_FILE=.claude-review-prompt.md" )
+fi
 
 # Run the review in the sandbox. The review only needs the already-mounted,
 # host-fetched repo, and writes its findings to REVIEW_OUTPUT in the mounted
