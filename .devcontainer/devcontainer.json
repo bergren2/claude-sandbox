@@ -31,8 +31,10 @@
     // CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) = subscription billing.
     "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
     "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
-    // Optional: enable gh inside the container.
-    "GH_TOKEN": "${localEnv:GH_TOKEN}",
+    // GitHub credentials are intentionally NOT forwarded: the sandbox runs
+    // --dangerously-skip-permissions and stays credential-free, so an injected
+    // agent has no GitHub token to exfiltrate code with. PR comments are posted
+    // from the host by scripts/review-host.sh, which already has gh auth.
     "TZ": "${localEnv:TZ:America/New_York}"
   },
   // Lock down outbound network to the allowlist on every container *start*, not

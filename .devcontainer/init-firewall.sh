@@ -39,17 +39,30 @@ iptables -A INPUT  -i lo -j ACCEPT
 
 ipset create allowed-domains hash:net
 
-# GitHub publishes its IP ranges — add web/api/git so gh and git over HTTPS work.
-echo "Fetching GitHub IP ranges..."
-gh_ranges=$(curl -s https://api.github.com/meta)
-if [ -z "$gh_ranges" ] || ! echo "$gh_ranges" | jq -e '.web and .api and .git' >/dev/null; then
-  echo "ERROR: failed to fetch GitHub IP ranges" >&2
-  exit 1
-fi
-while read -r cidr; do
-  [[ "$cidr" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]{1,2})?$ ]] || continue
-  ipset add allowed-domains "$cidr" 2>/dev/null || true
-done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | aggregate -q)
+# GitHub is intentionally NOT allowlisted by default. The review needs no GitHub
+# access: it runs against the host-mounted, host-fetched repo, and PR comments
+# are posted from the host (see scripts/review-host.sh). Keeping GitHub blocked
+# means an injected agent has no channel to reach it even if it obtained a token.
+#
+# OPT-IN (per repo): if THIS repo pulls dependencies from GitHub — git+https
+# deps, Releases assets, raw.githubusercontent, codeload tarballs, ghcr.io — and
+# you use the sandbox to build/install (not just review), uncomment the block
+# below and rebuild the container. GitHub spans many rotating IP ranges, so use
+# its published CIDR ranges rather than `dig` (which would miss most of them).
+# This grants outbound NETWORK reachability only — it does NOT add any GitHub
+# credential, so it stays read-only for public content (no push/comment/gist).
+# Also flip the "GitHub should be blocked" assertion at the bottom of this file.
+#
+# echo "Fetching GitHub IP ranges..."
+# gh_ranges=$(curl -s https://api.github.com/meta)
+# if [ -z "$gh_ranges" ] || ! echo "$gh_ranges" | jq -e '.web and .api and .git' >/dev/null; then
+#   echo "ERROR: failed to fetch GitHub IP ranges" >&2
+#   exit 1
+# fi
+# while read -r cidr; do
+#   [[ "$cidr" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]{1,2})?$ ]] || continue
+#   ipset add allowed-domains "$cidr" 2>/dev/null || true
+# done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | aggregate -q)
 
 # Resolve and allow each domain in the list.
 for domain in "${ALLOWED_DOMAINS[@]}"; do
@@ -81,14 +94,19 @@ iptables -A INPUT  -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A OUTPUT -m set --match-set allowed-domains dst -j ACCEPT
 
-# Verify: arbitrary internet blocked, allowlist reachable.
+# Verify: arbitrary internet blocked, allowlist reachable, GitHub blocked.
 echo "Verifying firewall..."
 if curl --connect-timeout 5 -s https://example.com >/dev/null 2>&1; then
   echo "ERROR: firewall failed — example.com is reachable but should be blocked" >&2
   exit 1
 fi
-if ! curl --connect-timeout 5 -s https://api.github.com/zen >/dev/null 2>&1; then
-  echo "ERROR: firewall failed — api.github.com is NOT reachable but should be" >&2
+# If you enabled the GitHub opt-in block above, remove or invert this assertion.
+if curl --connect-timeout 5 -s https://api.github.com/zen >/dev/null 2>&1; then
+  echo "ERROR: firewall failed — api.github.com is reachable but should be blocked" >&2
   exit 1
 fi
-echo "Firewall configured: arbitrary internet blocked, allowlist reachable."
+if ! curl --connect-timeout 5 -s https://registry.npmjs.org/ >/dev/null 2>&1; then
+  echo "ERROR: firewall failed — registry.npmjs.org is NOT reachable but should be" >&2
+  exit 1
+fi
+echo "Firewall configured: arbitrary internet (incl. GitHub) blocked, allowlist reachable."
