@@ -29,9 +29,59 @@ that boundary two ways:
     `npm install -g @devcontainers/cli` (for the terminal-only headless flow), **or**
   - [VS Code](https://code.visualstudio.com/) + the **Dev Containers** extension
     (for the interactive flow)
-- Auth, one of:
-  - `ANTHROPIC_API_KEY` set on the host (passed through automatically), **or**
-  - run `claude` once inside the container and log in (persists in a volume)
+- A Claude token on the host — `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`
+  (see [Authentication](#authentication))
+
+## Authentication
+
+The review runs `claude` inside the container, which needs non-interactive auth.
+An interactive login *inside* the container does **not** persist — Claude Code's
+credentials live in `~/.claude.json` at the home root, outside the mounted config
+volume — so provide a token on the **host** instead. Two options:
+
+- **Subscription** (Pro/Max/Team/Enterprise): generate a long-lived (~1 year),
+  account-scoped token with `claude setup-token`, then set `CLAUDE_CODE_OAUTH_TOKEN`.
+- **API billing**: set `ANTHROPIC_API_KEY`.
+
+`review-host.sh` uses whichever is set and injects it into the container only at
+`exec` time (via `--remote-env`), so the token never lands in the logged
+`docker run` command; it fails fast if neither is present. The interactive VS Code
+flow forwards the same vars via `containerEnv`.
+
+### Storing the token
+
+One token is account-scoped — the same value works across every repo and machine,
+so set it once and forget it.
+
+**Windows (PowerShell)** — persistent User env var:
+
+```powershell
+[Environment]::SetEnvironmentVariable("CLAUDE_CODE_OAUTH_TOKEN", "<token>", "User")
+```
+
+(`$env:CLAUDE_CODE_OAUTH_TOKEN = "..."` only lasts the current session.) Env vars
+are read at process start, so restart your terminal / editor afterward.
+
+**macOS / Linux (zsh or bash)** — export it from your shell profile:
+
+```bash
+echo 'export CLAUDE_CODE_OAUTH_TOKEN="<token>"' >> ~/.zshrc   # or ~/.bashrc
+```
+
+Use `~/.zshenv` instead if non-interactive shells need it too.
+
+> This stores a long-lived secret in plaintext (Windows registry / a dotfile).
+> Treat it like a credential. On macOS you can keep it in Keychain and resolve it
+> in your profile via `security find-generic-password ...` rather than hardcoding it.
+
+### Revoking a token
+
+`claude setup-token` does **not** revoke earlier tokens — each run just mints
+another, and there is currently no CLI revoke. To kill a token (e.g. one that
+leaked), revoke your Claude Code sessions in your **claude.ai** account settings.
+Revocation has been reported to take a few days to fully propagate, so the real
+defense is not exposing it: never echo the token, and keep it out of CI logs
+(which is why `review-host.sh` injects it at `exec` rather than via `containerEnv`).
 
 ## Use it as an interactive sandbox
 
