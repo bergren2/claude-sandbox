@@ -24,8 +24,11 @@ that boundary two ways:
 ## Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Linux containers)
-- [VS Code](https://code.visualstudio.com/) + the **Dev Containers** extension
-  (for the interactive flow)
+- One of:
+  - the **[Dev Containers CLI](https://github.com/devcontainers/cli)** —
+    `npm install -g @devcontainers/cli` (for the terminal-only headless flow), **or**
+  - [VS Code](https://code.visualstudio.com/) + the **Dev Containers** extension
+    (for the interactive flow)
 - Auth, one of:
   - `ANTHROPIC_API_KEY` set on the host (passed through automatically), **or**
   - run `claude` once inside the container and log in (persists in a volume)
@@ -42,10 +45,26 @@ that boundary two ways:
    ```
    Review away — no prompts. Try `/review` or just ask it to review your branch.
 
-## Use it headless
+## Use it headless (no VS Code)
 
-`scripts/review.sh` runs a one-shot review of the current branch's diff and writes
-`review.md`:
+`scripts/review-host.sh` runs the whole thing from your host terminal: it brings the
+container up via the Dev Containers CLI (applying the firewall), runs the review
+inside it, and writes `review.md` back into your working tree.
+
+```bash
+# on the host — no VS Code, no manual "Reopen in Container"
+scripts/review-host.sh                  # review HEAD vs origin/main
+scripts/review-host.sh origin/develop   # different base branch
+POST_COMMENT=true scripts/review-host.sh # also post to the branch's PR (needs gh auth)
+```
+
+`--dangerously-skip-permissions` only ever runs *inside* the firewalled container;
+the host just orchestrates `devcontainer up` / `exec`. The first run builds the
+image (slow); later runs reuse it.
+
+Under the hood that calls `scripts/review.sh`, which does the actual one-shot review
+and assumes it's already inside the container. Run it directly if you're already in a
+container shell, or wire it into a git hook, a cron job, or `docker run` in CI:
 
 ```bash
 # inside the container
@@ -53,9 +72,6 @@ scripts/review.sh                      # review HEAD vs origin/main
 scripts/review.sh origin/develop       # different base branch
 POST_COMMENT=true scripts/review.sh    # also post to the branch's PR (needs gh auth)
 ```
-
-This is the building block for automation — wire it into a git hook, a cron job, or
-`docker run` in CI.
 
 ## Drop it into another repo
 
@@ -72,7 +88,7 @@ via [Dev Container Features](https://containers.dev/features):
 }
 ```
 
-Also copy `scripts/review.sh` if you want the headless flow.
+Also copy `scripts/review.sh` and `scripts/review-host.sh` if you want the headless flow.
 
 > The older `kam` repo (ASP.NET MVC5 / MSBuild / Visual Studio targets) does **not**
 > containerize cleanly on Linux — review there is better done via the GitHub Action
@@ -90,9 +106,10 @@ allowlist surfaces immediately rather than silently leaving the box open.
 | Path | Purpose |
 |------|---------|
 | `.devcontainer/Dockerfile` | Base image: Node + git/gh + Claude Code + firewall tooling |
-| `.devcontainer/init-firewall.sh` | Outbound allowlist (runs on container create) |
+| `.devcontainer/init-firewall.sh` | Outbound allowlist (runs on every container start) |
 | `.devcontainer/devcontainer.json` | Container config, caps, mounts, env passthrough |
-| `scripts/review.sh` | Headless branch-diff review → `review.md` (optional PR comment) |
+| `scripts/review-host.sh` | Host driver: `devcontainer up` + `exec` → in-container review |
+| `scripts/review.sh` | In-container branch-diff review → `review.md` (optional PR comment) |
 
 ## Caveats
 
