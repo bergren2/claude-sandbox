@@ -43,6 +43,11 @@ RUN mkdir -p /commandhistory \
   && chown -R $USERNAME:$USERNAME /home/$USERNAME/.claude
 ENV HISTFILE=/commandhistory/.bash_history
 
+# Seed an empty config at the home root (outside the mounted .claude volume) so
+# Claude Code doesn't log "configuration file not found" on every container start.
+RUN echo '{}' > /home/$USERNAME/.claude.json \
+  && chown $USERNAME:$USERNAME /home/$USERNAME/.claude.json
+
 # Passwordless sudo ONLY for the firewall init script — nothing else.
 RUN echo "$USERNAME ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/init-firewall \
   && chmod 0440 /etc/sudoers.d/init-firewall
