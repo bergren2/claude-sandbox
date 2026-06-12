@@ -26,8 +26,12 @@
     "source=claude-sandbox-history,target=/commandhistory,type=volume"
   ],
   "containerEnv": {
-    // Optional: set these on the host to skip interactive login / enable gh.
+    // Auth for headless `claude -p` (set either on the host; both skip the
+    // interactive login prompt). ANTHROPIC_API_KEY = API billing;
+    // CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) = subscription billing.
     "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
+    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
+    // Optional: enable gh inside the container.
     "GH_TOKEN": "${localEnv:GH_TOKEN}",
     "TZ": "${localEnv:TZ:America/New_York}"
   },
