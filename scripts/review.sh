@@ -23,7 +23,9 @@ if ! command -v claude >/dev/null 2>&1; then
   exit 1
 fi
 
-git fetch --quiet origin || true
+# Best-effort: the host driver (review-host.sh) already fetches with credentials.
+# Inside the firewalled container there's no GitHub auth, so silence the failure.
+git fetch --quiet origin 2>/dev/null || true
 
 if git diff --quiet "${BASE_REF}"...HEAD 2>/dev/null; then
   echo "No changes against ${BASE_REF}; nothing to review."

@@ -39,10 +39,43 @@ if ! command -v devcontainer >/dev/null 2>&1; then
   exit 1
 fi
 
+# The in-container `claude -p` needs non-interactive auth. An interactive login
+# inside the container does NOT persist (~/.claude.json lives at HOME, outside
+# the mounted volume), so require a token in the host env and fail fast — better
+# than letting claude loop on "configuration file not found".
+if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${ANTHROPIC_AUTH_TOKEN:-}" ] && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+  echo "ERROR: no Claude auth in the environment. Set one of these on the host" >&2
+  echo "       (devcontainer.json forwards them into the container):" >&2
+  echo "         export ANTHROPIC_API_KEY=...           # API billing" >&2
+  echo "         export CLAUDE_CODE_OAUTH_TOKEN=...      # subscription; from 'claude setup-token'" >&2
+  exit 1
+fi
+
+# Fetch the base ref on the HOST, which has GitHub credentials — the firewalled
+# container can't authenticate to GitHub. This keeps the in-container diff against
+# a fresh base; the container's own fetch is left as a no-auth best-effort.
+echo "Fetching latest from origin (on host)..."
+git -C "$WORKSPACE" fetch --quiet origin 2>/dev/null \
+  || echo "WARN: host fetch failed; the diff will use existing local refs." >&2
+
+# Bring the container up with auth tokens stripped from the environment, so they
+# are NOT baked into the `docker run` command that the CLI echoes to its log.
+# Auth is injected only at exec time via --remote-env, which the CLI does not print.
 echo "Bringing up sandbox (first run builds the image; later runs reuse it)..."
-devcontainer up --workspace-folder "$WORKSPACE"
+(
+  unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN
+  devcontainer up --workspace-folder "$WORKSPACE"
+)
+
+# Forward whichever auth token is set, plus the review options, via --remote-env.
+exec_env=()
+for var in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN; do
+  [ -n "${!var:-}" ] && exec_env+=( --remote-env "$var=${!var}" )
+done
 
 echo "Running review inside the sandbox..."
 devcontainer exec --workspace-folder "$WORKSPACE" \
-  env REVIEW_OUTPUT="${REVIEW_OUTPUT:-review.md}" POST_COMMENT="${POST_COMMENT:-false}" \
+  "${exec_env[@]}" \
+  --remote-env "REVIEW_OUTPUT=${REVIEW_OUTPUT:-review.md}" \
+  --remote-env "POST_COMMENT=${POST_COMMENT:-false}" \
   scripts/review.sh "$BASE_REF"

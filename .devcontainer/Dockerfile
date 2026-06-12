@@ -25,6 +25,12 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     curl \
   && rm -rf /var/lib/apt/lists/*
 
+# The workspace is bind-mounted from the host, so its owner uid won't match the
+# container user and git refuses to operate ("dubious ownership"). This is a
+# disposable single-user sandbox, so disable the ownership check globally rather
+# than chown the mount on every start.
+RUN git config --system --add safe.directory '*'
+
 ARG USERNAME=node
 
 # Pre-create the volume mount points owned by the non-root user. Docker
