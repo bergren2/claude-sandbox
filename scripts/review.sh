@@ -9,9 +9,9 @@
 #   scripts/review.sh [base-ref]              # review HEAD vs base-ref (default origin/main)
 #
 # Writes the review to REVIEW_OUTPUT and does NOT post it — the firewalled
-# sandbox holds no GitHub credentials by design. Post from the host instead: the
-# review-host.sh driver does this automatically when POST_COMMENT=true, or run
-# `gh pr comment --body-file review.md` yourself from the host.
+# sandbox holds no GitHub credentials by design. Post from the host instead
+# (e.g. `gh pr comment --body-file review.md`); the pr-tools review-local skill
+# does this for you.
 #
 # Env:
 #   REVIEW_OUTPUT   output file (default: review.md)
@@ -50,4 +50,4 @@ claude -p "$PROMPT" --dangerously-skip-permissions | tee "$OUTPUT"
 
 echo ""
 echo "Review written to ${OUTPUT}"
-echo "(Posting is the host's job — see review-host.sh / POST_COMMENT.)"
+echo "(Posting is the caller's job, done on the host — the sandbox has no credentials.)"

@@ -11,19 +11,19 @@
 # Usage:
 #   scripts/review-host.sh [base-ref]         # review HEAD vs base-ref (default origin/main)
 #
+# This script does the review only — it writes REVIEW_OUTPUT and stops. Posting
+# the result anywhere (e.g. a PR comment) is the caller's job, done on the host
+# where credentials live; the sandbox never touches GitHub. The pr-tools
+# `review-local` skill is the usual caller and handles posting.
+#
 # Env:
 #   REVIEW_OUTPUT   output file (default: review.md); forwarded into the container
-#   POST_COMMENT    "true" to post findings to the branch's PR. The comment is
-#                   posted from the HOST (which already has gh auth) AFTER the
-#                   in-container review writes the file. No GitHub credentials are
-#                   ever forwarded into the firewalled sandbox.
 #
 # Host prereqs:
 #   - Docker running (Docker Desktop)
 #   - Dev Containers CLI:  npm install -g @devcontainers/cli
 #   - ANTHROPIC_API_KEY set on the host (forwarded via devcontainer.json), or a
 #     prior `claude` login persisted in the claude-sandbox-config volume.
-#   - For POST_COMMENT=true: gh authenticated on the host (`gh auth login`).
 set -euo pipefail
 
 BASE_REF="${1:-origin/main}"
@@ -77,28 +77,15 @@ for var in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN; do
   [ -n "${!var:-}" ] && exec_env+=( --remote-env "$var=${!var}" )
 done
 
-# Run the review in the sandbox. Posting is NOT done here: the firewalled,
-# --dangerously-skip-permissions container deliberately holds no GitHub
-# credentials. The review only needs the already-mounted, host-fetched repo, and
-# writes its findings to REVIEW_OUTPUT in the mounted working tree.
+# Run the review in the sandbox. The review only needs the already-mounted,
+# host-fetched repo, and writes its findings to REVIEW_OUTPUT in the mounted
+# working tree — so the result is visible on the host at "$WORKSPACE" when this
+# returns. Posting it anywhere is left to the caller (the sandbox holds no
+# credentials).
 echo "Running review inside the sandbox..."
 devcontainer exec --workspace-folder "$WORKSPACE" \
   "${exec_env[@]}" \
   --remote-env "REVIEW_OUTPUT=${REVIEW_OUTPUT:-review.md}" \
   scripts/review.sh "$BASE_REF"
 
-# Post the comment from the HOST, which already has gh auth and is not running
-# --dangerously-skip-permissions. The review file landed in the mounted repo, so
-# it is visible here at $WORKSPACE.
-if [ "${POST_COMMENT:-false}" = "true" ]; then
-  OUTPUT_FILE="$WORKSPACE/${REVIEW_OUTPUT:-review.md}"
-  if ! command -v gh >/dev/null 2>&1; then
-    echo "WARN: POST_COMMENT=true but gh is not installed on the host; skipping comment." >&2
-  elif [ ! -s "$OUTPUT_FILE" ]; then
-    echo "WARN: POST_COMMENT=true but '$OUTPUT_FILE' is empty or missing; skipping comment." >&2
-  else
-    echo "Posting review as a PR comment (from host)..."
-    ( cd "$WORKSPACE" && gh pr comment --body-file "$OUTPUT_FILE" ) \
-      || echo "WARN: gh pr comment failed (not authenticated, or no open PR for this branch?)." >&2
-  fi
-fi
+echo "Review written to $WORKSPACE/${REVIEW_OUTPUT:-review.md}"
