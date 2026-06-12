@@ -7,24 +7,28 @@
 #
 # Usage:
 #   scripts/review.sh [base-ref]              # review HEAD vs base-ref (default origin/main)
-#   POST_COMMENT=true scripts/review.sh       # also post findings to the branch's PR via gh
+#
+# Writes the review to REVIEW_OUTPUT and does NOT post it — the firewalled
+# sandbox holds no GitHub credentials by design. Post from the host instead: the
+# review-host.sh driver does this automatically when POST_COMMENT=true, or run
+# `gh pr comment --body-file review.md` yourself from the host.
 #
 # Env:
 #   REVIEW_OUTPUT   output file (default: review.md)
-#   POST_COMMENT    "true" to post the review as a PR comment (needs gh auth / GH_TOKEN)
 set -euo pipefail
 
 BASE_REF="${1:-origin/main}"
 OUTPUT="${REVIEW_OUTPUT:-review.md}"
-POST_COMMENT="${POST_COMMENT:-false}"
 
 if ! command -v claude >/dev/null 2>&1; then
   echo "ERROR: 'claude' not found — are you inside the devcontainer?" >&2
   exit 1
 fi
 
-# Best-effort: the host driver (review-host.sh) already fetches with credentials.
-# Inside the firewalled container there's no GitHub auth, so silence the failure.
+# Best-effort: the host driver (review-host.sh) already fetches the base ref with
+# credentials before exec, so origin refs are present in the mounted repo. GitHub
+# is firewalled off inside the container, so this fetch is expected to fail here —
+# silence it.
 git fetch --quiet origin 2>/dev/null || true
 
 if git diff --quiet "${BASE_REF}"...HEAD 2>/dev/null; then
@@ -46,12 +50,4 @@ claude -p "$PROMPT" --dangerously-skip-permissions | tee "$OUTPUT"
 
 echo ""
 echo "Review written to ${OUTPUT}"
-
-if [ "$POST_COMMENT" = "true" ]; then
-  if command -v gh >/dev/null 2>&1; then
-    echo "Posting review as a PR comment..."
-    gh pr comment --body-file "$OUTPUT" || echo "WARN: gh pr comment failed (no open PR for this branch?)" >&2
-  else
-    echo "WARN: gh not available; skipping PR comment." >&2
-  fi
-fi
+echo "(Posting is the host's job — see review-host.sh / POST_COMMENT.)"
